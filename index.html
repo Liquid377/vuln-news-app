@@ -1,0 +1,285 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Подписки на уязвимости</title>
+<!-- Мини-приложение бота @vuln_news_ru_bot. Без сервера: текущие настройки приходят в ссылке
+     (?s=продукты&l=уровень&q=ночью без звука&p=пауза&f=поиск&v=версия каталога),
+     выбор уходит боту через Telegram.WebApp.sendData. Каталог — catalog.json (bot/export_catalog.py). -->
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  :root {
+    --bg: var(--tg-theme-bg-color, #ffffff);
+    --bg2: var(--tg-theme-secondary-bg-color, #f2f3f5);
+    --text: var(--tg-theme-text-color, #16181d);
+    --hint: var(--tg-theme-hint-color, #7d828c);
+    --link: var(--tg-theme-link-color, #2a7de1);
+    --accent: var(--tg-theme-button-color, #2a7de1);
+    --accent-text: var(--tg-theme-button-text-color, #ffffff);
+    --section: var(--tg-theme-section-bg-color, var(--bg));
+    --sep: color-mix(in srgb, var(--hint) 22%, transparent);
+    --danger: var(--tg-theme-destructive-text-color, #e5484d);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not(.tg) {
+      --bg: #17191d; --bg2: #0f1013; --text: #eceef2; --hint: #8b919c; --link: #5aa2f0;
+      --accent: #3d8ff0; --section: #1d2025;
+    }
+  }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; background: var(--bg2); color: var(--text);
+    font: 15px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { padding-bottom: 88px; }
+  header { padding: 16px 16px 8px; }
+  h1 { margin: 0; font-size: 20px; font-weight: 650; }
+  .sub { color: var(--hint); font-size: 13px; margin-top: 2px; }
+  .search { position: sticky; top: 0; z-index: 5; padding: 8px 16px; background: var(--bg2); }
+  .search input { width: 100%; border: 0; outline: 0; border-radius: 10px; padding: 10px 12px 10px 34px;
+    font: inherit; color: var(--text); background: var(--section)
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%237d828c' stroke-width='2'%3E%3Ccircle cx='7' cy='7' r='5'/%3E%3Cpath d='m11 11 3.5 3.5'/%3E%3C/svg%3E") 11px 50% no-repeat; }
+  .section-title { padding: 16px 16px 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .03em; color: var(--hint); }
+  .card { background: var(--section); margin: 0 12px; border-radius: 12px; overflow: hidden; }
+  .row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; cursor: pointer; user-select: none; min-height: 44px; }
+  .row + .row, details + details { border-top: 1px solid var(--sep); }
+  .row .t { flex: 1; min-width: 0; }
+  .row .d { color: var(--hint); font-size: 13px; }
+  .check { width: 22px; height: 22px; border-radius: 50%; border: 2px solid var(--sep); flex: none; display: grid; place-items: center; transition: .12s; }
+  .on .check { background: var(--accent); border-color: var(--accent); }
+  .on .check::after { content: ""; width: 10px; height: 6px; border: 2px solid var(--accent-text); border-top: 0; border-right: 0; transform: rotate(-45deg) translate(1px, -1px); }
+  details > summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 12px 14px; cursor: pointer; min-height: 46px; }
+  details > summary::-webkit-details-marker { display: none; }
+  details > summary .t { flex: 1; font-weight: 550; }
+  details > summary::after { content: "›"; display: inline-block; color: var(--hint); font-size: 20px; line-height: 1; transition: transform .15s; }
+  details[open] > summary::after { transform: rotate(90deg); }
+  details .row { padding-left: 22px; border-top: 1px solid var(--sep); }
+  .badge { background: var(--accent); color: var(--accent-text); border-radius: 10px; padding: 1px 8px; font-size: 12px; font-weight: 600; }
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; padding: 12px; }
+  .chip { display: inline-flex; align-items: center; gap: 6px; background: color-mix(in srgb, var(--accent) 14%, transparent);
+    color: var(--text); border-radius: 16px; padding: 5px 10px; font-size: 13px; cursor: pointer; }
+  .chip::after { content: "×"; color: var(--hint); font-size: 16px; line-height: 1; }
+  .empty { padding: 14px; color: var(--hint); }
+  .seg { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 4px; background: var(--bg2); border-radius: 10px; margin: 12px; }
+  .seg button { border: 0; border-radius: 8px; padding: 8px 4px; font: inherit; font-size: 14px; color: var(--text); background: transparent; cursor: pointer; }
+  .seg button.sel { background: var(--section); box-shadow: 0 1px 3px rgba(0,0,0,.12); font-weight: 600; }
+  .level-hint { padding: 0 16px 12px; color: var(--hint); font-size: 13px; }
+  .switch { width: 44px; height: 26px; border-radius: 13px; background: var(--sep); position: relative; flex: none; transition: .15s; }
+  .switch::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: .15s; box-shadow: 0 1px 2px rgba(0,0,0,.2); }
+  .on .switch { background: var(--accent); }
+  .on .switch::after { left: 21px; }
+  textarea { width: 100%; border: 0; outline: 0; resize: vertical; min-height: 64px; padding: 12px 14px; font: inherit; color: var(--text); background: transparent; }
+  .link { color: var(--link); cursor: pointer; padding: 12px 16px; display: block; font-size: 14px; }
+  .note { color: var(--hint); font-size: 12px; padding: 10px 16px 0; }
+  #save { position: fixed; left: 12px; right: 12px; bottom: 12px; padding: 14px; border: 0; border-radius: 12px; font: inherit; font-weight: 600;
+    background: var(--accent); color: var(--accent-text); display: none; }
+  .no-tg #save { display: block; }
+  .no-tg #save:disabled { opacity: .45; }
+  #debug { white-space: pre-wrap; font: 12px ui-monospace, monospace; padding: 12px 16px; color: var(--hint); }
+  mark { background: color-mix(in srgb, var(--accent) 28%, transparent); color: inherit; border-radius: 3px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Подписки на уязвимости и взломы</h1>
+  <div class="sub" id="summary">Загрузка…</div>
+</header>
+<div class="search"><input id="q" type="search" placeholder="Найти продукт: zabbix, fortigate, 1с…" autocomplete="off" enterkeyhint="search"></div>
+<main id="list"></main>
+
+<div class="section-title">Что присылать</div>
+<div class="card">
+  <div class="seg" id="levels"></div>
+  <div class="level-hint" id="level-hint"></div>
+  <div class="row" id="strict"><div class="t">Только опасное<div class="d">удалённо, без учётной записи и действий пользователя. Эксплуатируемое и с эксплойтом приходит всегда</div></div><div class="switch"></div></div>
+  <div class="row" id="quiet"><div class="t">Ночью без звука<div class="d">с 00:00 до 08:00 по Москве</div></div><div class="switch"></div></div>
+  <div class="row" id="pause"><div class="t">Пауза<div class="d">временно ничего не присылать</div></div><div class="switch"></div></div>
+</div>
+
+<div class="section-title">Нет нужного продукта?</div>
+<div class="card">
+  <textarea id="request" maxlength="300" placeholder="Название и вендор, например: Kaspersky Security Center"></textarea>
+</div>
+<div class="note">Запрос уйдёт автору вместе с сохранением настроек.</div>
+
+<button id="save">Сохранить</button>
+<div id="debug"></div>
+
+<script>
+const tg = window.Telegram?.WebApp;
+// Не по initData: у приложения с кнопки обычной клавиатуры (только так работает sendData) он пустой.
+// Вне Telegram скрипт тоже создаёт WebApp, но с platform 'unknown'
+const inTelegram = Boolean(tg?.platform) && tg.platform !== 'unknown';
+document.documentElement.classList.toggle('tg', inTelegram);
+document.body.classList.toggle('no-tg', !inTelegram);
+
+const LEVELS = {
+  1: ['Срочное', 'Только то, что эксплуатируется в атаках, с публичным эксплойтом или CVSS ≥ 9. В крипте — ущерб от $100 млн, взломы в TON и СНГ. В новостях — самое важное.'],
+  2: ['CVSS 8+', 'Срочное и всё с CVSS от 8. В крипте — все взломы, уязвимости и мошенники. Все новости выбранных тем.'],
+  3: ['CVSS 7+', 'То же и CVSS от 7, высокий EPSS или то, о чём пишут СМИ.'],
+  4: ['Всё', 'Любые уязвимости выбранного ПО, включая низкий уровень. В крипте — ещё и развитие историй.'],
+};
+const params = new URLSearchParams(location.search);
+const initial = {
+  subs: (params.get('s') || '').split(',').filter(Boolean).sort(),
+  level: Number(params.get('l')) in LEVELS ? Number(params.get('l')) : 2,
+  strict: params.get('x') === '1',
+  quiet: params.get('q') !== '0',
+  pause: params.get('p') === '1',
+};
+const state = { subs: new Set(initial.subs), level: initial.level, strict: initial.strict, quiet: initial.quiet, pause: initial.pause, open: new Set() };
+let catalog = { categories: [], products: [], packs: [] };
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const haptic = () => tg?.HapticFeedback?.selectionChanged();
+
+function dirty() {
+  return [...state.subs].sort().join() !== initial.subs.join() || state.level !== initial.level
+    || state.strict !== initial.strict || state.quiet !== initial.quiet || state.pause !== initial.pause || $('request').value.trim() !== '';
+}
+
+function norm(s) { return s.toLowerCase().replace(/ё/g, 'е').trim(); }
+function matches(p, q) {
+  if (norm(p.title).includes(q) || p.id === q) return true;
+  return p.k.some(k => k.includes(q) || (k.length >= 4 && q.includes(k)));
+}
+function highlight(title, q) {
+  const i = norm(title).indexOf(q);
+  return i < 0 || !q ? esc(title) : esc(title.slice(0, i)) + '<mark>' + esc(title.slice(i, i + q.length)) + '</mark>' + esc(title.slice(i + q.length));
+}
+// Продукты выбранных наборов: отмечены, отключаются только вместе с набором
+function inPacks() {
+  return new Set(catalog.packs.filter(k => state.subs.has(k.id)).flatMap(k => k.items));
+}
+function row(p, q = '', covered = new Set()) {
+  if (covered.has(p.id) && !state.subs.has(p.id)) {
+    return `<div class="row on covered"><div class="check"></div><div class="t">${highlight(p.title, q)}<div class="d">входит в выбранный набор</div></div></div>`;
+  }
+  return `<div class="row${state.subs.has(p.id) ? ' on' : ''}" data-id="${p.id}"><div class="check"></div><div class="t">${highlight(p.title, q)}</div></div>`;
+}
+function packRow(k) {
+  return `<div class="row${state.subs.has(k.id) ? ' on' : ''}" data-id="${k.id}"><div class="check"></div><div class="t">${esc(k.title)}<div class="d">${esc(k.d)}</div></div></div>`;
+}
+
+function render() {
+  const q = norm($('q').value);
+  const byId = Object.fromEntries([...catalog.products, ...catalog.packs].map(p => [p.id, p]));
+  const covered = inPacks();
+  let html = '';
+  if (q) {
+    const hits = catalog.products.filter(p => matches(p, q));
+    html += `<div class="section-title">Найдено: ${hits.length}</div><div class="card">`
+      + (hits.length ? hits.map(p => row(p, q, covered)).join('') : '<div class="empty">Ничего не нашлось. Попросите добавить продукт — форма внизу.</div>')
+      + '</div>';
+  } else {
+    const mine = [...state.subs].filter(id => byId[id]).sort((a, b) => byId[a].title.localeCompare(byId[b].title));
+    html += `<div class="section-title">Наборы: одним нажатием</div><div class="card">${catalog.packs.map(packRow).join('')}</div>`;
+    html += `<div class="section-title">Мой выбор</div><div class="card">`
+      + (mine.length ? `<div class="chips">${mine.map(id => `<span class="chip" data-id="${id}">${esc(byId[id].title)}</span>`).join('')}</div>`
+        : '<div class="empty">Пока ничего не выбрано — отметьте наборы выше, продукты в папках ниже или найдите поиском.</div>')
+      + '</div><div class="section-title">Отдельные продукты</div><div class="card">';
+    for (const c of catalog.categories) {
+      const items = catalog.products.filter(p => p.cat === c.id);
+      const n = items.filter(p => state.subs.has(p.id) || covered.has(p.id)).length;
+      const allOn = items.length > 0 && items.every(p => state.subs.has(p.id));
+      const all = `<div class="link" data-all="${c.id}">${allOn ? 'Снять всю папку' : 'Выбрать всю папку'}</div>`;
+      html += `<details data-cat="${c.id}"${state.open.has(c.id) ? ' open' : ''}><summary><span class="t">${esc(c.title)}</span>${n ? `<span class="badge">${n}</span>` : ''}</summary>${all}${items.map(p => row(p, '', covered)).join('')}</details>`;
+    }
+    html += '</div>';
+  }
+  $('list').innerHTML = html;
+
+  $('levels').innerHTML = Object.entries(LEVELS).map(([n, [t]]) => `<button data-level="${n}" class="${state.level === Number(n) ? 'sel' : ''}">${t}</button>`).join('');
+  $('level-hint').textContent = LEVELS[state.level][1];
+  $('strict').classList.toggle('on', state.strict);
+  $('quiet').classList.toggle('on', state.quiet);
+  $('pause').classList.toggle('on', state.pause);
+  const n = new Set([...[...state.subs].filter(id => !id.startsWith('pk_')), ...covered]).size;
+  $('summary').textContent = `${n ? `Выбрано продуктов и тем: ${n}` : 'Ничего не выбрано'} · ${LEVELS[state.level][0].toLowerCase()}${state.pause ? ' · на паузе' : ''}`;
+  updateSave();
+}
+
+function updateSave() {
+  const d = dirty();
+  if (inTelegram) {
+    tg.MainButton.setParams({ text: 'Сохранить', is_visible: d, is_active: d });
+    // спросить перед закрытием, только если есть несохранённое
+    d ? tg.enableClosingConfirmation?.() : tg.disableClosingConfirmation?.();
+  } else {
+    $('save').disabled = !d;
+  }
+}
+
+function payload() {
+  const data = { s: [...state.subs].sort(), l: state.level, x: state.strict ? 1 : 0, q: state.quiet ? 1 : 0, p: state.pause ? 1 : 0 };
+  const r = $('request').value.trim();
+  if (r) data.r = r.slice(0, 300);
+  return JSON.stringify(data);
+}
+
+function save() {
+  if (!dirty()) return;
+  const data = payload();
+  if (inTelegram) {
+    try {
+      tg.HapticFeedback?.notificationOccurred('success');
+      tg.disableClosingConfirmation?.();
+      tg.sendData(data);   // закрывает мини-приложение, бот получит message.web_app_data
+    } catch (e) {
+      // sendData работает только при запуске кнопкой «⚙️ Настройки» под полем ввода в личке с ботом
+      tg.showAlert?.('Не удалось сохранить. Откройте настройки кнопкой «⚙️ Настройки» под полем ввода в чате с ботом.');
+    }
+  } else {
+    $('debug').textContent = 'Вне Telegram. Боту ушло бы:\n' + data;
+  }
+}
+
+document.addEventListener('click', e => {
+  const folder = e.target.closest('[data-all]');
+  if (folder) {
+    const ids = catalog.products.filter(p => p.cat === folder.dataset.all).map(p => p.id);
+    const allOn = ids.every(id => state.subs.has(id));
+    ids.forEach(id => (allOn ? state.subs.delete(id) : state.subs.add(id)));
+    haptic();
+    return render();
+  }
+  const r = e.target.closest('.row[data-id], .chip[data-id]');
+  if (r) {
+    const id = r.dataset.id;
+    state.subs.has(id) ? state.subs.delete(id) : state.subs.add(id);
+    haptic();
+    return render();
+  }
+  const lv = e.target.closest('[data-level]');
+  if (lv) { state.level = Number(lv.dataset.level); haptic(); return render(); }
+  if (e.target.closest('#strict')) { state.strict = !state.strict; haptic(); return render(); }
+  if (e.target.closest('#quiet')) { state.quiet = !state.quiet; haptic(); return render(); }
+  if (e.target.closest('#pause')) { state.pause = !state.pause; haptic(); return render(); }
+});
+document.addEventListener('toggle', e => {
+  const cat = e.target.dataset?.cat;
+  if (cat) e.target.open ? state.open.add(cat) : state.open.delete(cat);
+}, true);
+$('q').addEventListener('input', render);
+$('q').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
+$('request').addEventListener('input', updateSave);
+$('save').addEventListener('click', save);
+
+if (inTelegram) {
+  tg.ready();
+  tg.expand();
+  tg.MainButton.onClick(save);
+  tg.setHeaderColor?.('secondary_bg_color');
+  tg.setBackgroundColor?.('secondary_bg_color');
+}
+
+fetch(`catalog.json?v=${encodeURIComponent(params.get('v') || Date.now())}`)
+  .then(r => r.json())
+  .then(data => {
+    catalog = data;
+    if (params.get('f')) $('q').value = params.get('f');
+    render();
+  })
+  .catch(() => { $('summary').textContent = 'Не удалось загрузить каталог. Закройте и откройте снова.'; });
+</script>
+</body>
+</html>
